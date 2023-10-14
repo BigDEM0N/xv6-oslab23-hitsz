@@ -1,0 +1,187 @@
+diff --git a/.nfs00000000030c8abf00001472 b/.nfs00000000030c8abf00001472
+new file mode 100644
+index 0000000..223f5cb
+Binary files /dev/null and b/.nfs00000000030c8abf00001472 differ
+diff --git a/.nfs00000000030c8d5c00001478 b/.nfs00000000030c8d5c00001478
+new file mode 100644
+index 0000000..fddbe06
+Binary files /dev/null and b/.nfs00000000030c8d5c00001478 differ
+diff --git a/Makefile b/Makefile
+index cac799d..0383808 100644
+--- a/Makefile
++++ b/Makefile
+@@ -154,6 +154,9 @@ UPROGS=\
+ 	$U/_grind\
+ 	$U/_wc\
+ 	$U/_zombie\
++	$U/_pingpong\
++  $U/_find\
++  $U/_sleep\
+ 
+ 
+ ifeq ($(LAB),syscall)
+diff --git a/kernel/.nfs00000000031e8acf00001477 b/kernel/.nfs00000000031e8acf00001477
+new file mode 100755
+index 0000000..8abde21
+Binary files /dev/null and b/kernel/.nfs00000000031e8acf00001477 differ
+diff --git a/kernel/.nfs00000000031e8ad100001471 b/kernel/.nfs00000000031e8ad100001471
+new file mode 100755
+index 0000000..8abde21
+Binary files /dev/null and b/kernel/.nfs00000000031e8ad100001471 differ
+diff --git a/user/.nfs00000000031e089100001473 b/user/.nfs00000000031e089100001473
+new file mode 100755
+index 0000000..6479da0
+Binary files /dev/null and b/user/.nfs00000000031e089100001473 differ
+diff --git a/user/find.c b/user/find.c
+new file mode 100644
+index 0000000..d2226dd
+--- /dev/null
++++ b/user/find.c
+@@ -0,0 +1,88 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++#include "kernel/fs.h"
++
++char *fmtname(char *path)
++{
++    static char buf[DIRSIZ + 1];
++    char *p;
++
++    // Find first character after last slash.
++    for (p = path + strlen(path); p >= path && *p != '/'; p--)
++        ;
++    p++;
++
++    // Return blank-padded name.
++    if (strlen(p) >= DIRSIZ)
++        return p;
++    memmove(buf, p, strlen(p));
++    buf[strlen(p)] = '\0';
++
++    return buf;
++}
++
++void cmp(char *a, char *b)
++{
++    if (!strcmp(fmtname(a), b))
++        printf("%s\n", a);
++}
++
++void find(char *path, char *target)
++{
++    char buf[512], *p;
++    int fd;
++    struct dirent de;
++    struct stat st;
++
++    if ((fd = open(path, 0)) < 0)
++    {
++        fprintf(2, "find: cannot open %s\n", path);
++        return;
++    }
++
++    if (fstat(fd, &st) < 0)
++    {
++        fprintf(2, "find: cannot stat %s\n", path);
++        close(fd);
++        return;
++    }
++
++    if (st.type == T_FILE)
++    {
++        cmp(path, target);
++    }
++    else if (st.type == T_DIR)
++    {
++        if (strlen(path) + 1 + DIRSIZ + 1 > sizeof buf)
++        {
++            printf("find: path too long\n");
++        }
++        strcpy(buf, path);
++        p = buf + strlen(buf);
++        *p++ = '/';
++        while (read(fd, &de, sizeof(de)) == sizeof(de))
++        {
++            if (de.inum == 0 || de.inum == 1 || strcmp(de.name, ".") == 0 || strcmp(de.name, "..") == 0)
++                continue;
++            memmove(p, de.name, strlen(de.name));
++            p[strlen(de.name)] = '\0';
++            find(buf, target);
++        }
++    }
++
++    close(fd);
++}
++
++int main(int argc, char *argv[])
++{
++
++    if (argc < 3)
++    {
++        printf("Please input the right arg!\n");
++        exit(0);
++    }
++
++    find(argv[1], argv[2]);
++    exit(0);
++}
+diff --git a/user/pingpong.c b/user/pingpong.c
+new file mode 100644
+index 0000000..837572d
+--- /dev/null
++++ b/user/pingpong.c
+@@ -0,0 +1,30 @@
++#include "kernel/types.h"
++#include "user.h"
++
++int main(int argc, char* argv[]){
++    int p[2];
++    pipe(p);
++    char buffer[4];
++    int pid;
++    if((pid = fork())<0){
++        printf("fork error!");
++        exit(-1);
++    }
++    if(pid == 0){
++        read(p[0],buffer,4);
++        close(p[0]);
++        printf("%d: received %s\n", getpid(),buffer);
++        write(p[1],"pong",4);
++        close(p[1]);
++        exit(0);
++    }
++    else{
++        write(p[1],"ping",4);
++        close(p[1]);
++        wait(0);
++        read(p[0],buffer,4);
++        printf("%d: received %s\n", getpid(),buffer);
++        close(p[0]);
++    }
++    exit(0);
++}
+\ No newline at end of file
+diff --git a/user/sleep.c b/user/sleep.c
+new file mode 100644
+index 0000000..38b6fcc
+--- /dev/null
++++ b/user/sleep.c
+@@ -0,0 +1,15 @@
++#include "kernel/types.h"
++#include "user.h"
++
++int main(int argc, char* argv[])
++{
++    if (argc != 2)
++    {
++        printf("Sleep needs one argument!\n");
++        exit(-1);
++    }
++    int ticks = atoi(argv[1]);
++    sleep(ticks);
++    printf("(nothing happens for a little while)\n");
++    exit(0);
++}
+\ No newline at end of file

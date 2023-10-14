@@ -291,6 +291,29 @@ void reparent(struct proc *p) {
   }
 }
 
+char *getStatus(int status) {
+  switch (status) {
+    case 0:
+      return "unused";
+      break;
+    case 1:
+      return "sleep";
+      break;
+    case 2:
+      return "runnable";
+      break;
+    case 3:
+      return "run";
+      break;
+    case 4:
+      return "zombie";
+      break;
+    default:
+      return " ";
+      break;
+  }
+}
+
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait().
@@ -337,7 +360,21 @@ void exit(int status) {
   acquire(&original_parent->lock);
 
   acquire(&p->lock);
-
+  exit_info("proc %d exit, parent pid %d, name %s, state %s\n", p->pid, p->parent->pid, p->parent->name,
+            getStatus(p->parent->state));
+  struct proc *cp;
+  int i = 0;
+  for (cp = proc; cp < &proc[NPROC]; cp++) {
+    if ((cp->parent == p) && (cp->name[0] == 'c')) {
+      acquire(&cp->lock);
+      exit_info("proc %d exit, child %d, pid %d, name %s, state %s\n", p->pid, i, cp->pid, cp->name,
+                getStatus(cp->state));
+      i++;
+      release(&cp->lock);
+    }
+  }
+  release(&p->lock);
+  acquire(&p->lock);
   // Give any children to init.
   reparent(p);
 
@@ -356,7 +393,7 @@ void exit(int status) {
 
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
-int wait(uint64 addr) {
+int wait(uint64 addr, int nonblock) {
   struct proc *np;
   int havekids, pid;
   struct proc *p = myproc();
@@ -399,9 +436,13 @@ int wait(uint64 addr) {
       release(&p->lock);
       return -1;
     }
-
-    // Wait for a child to exit.
-    sleep(p, &p->lock);  // DOC: wait-sleep
+    if (nonblock == 1) {
+      release(&p->lock);
+      return -1;
+    } else {
+      // Wait for a child to exit.
+      sleep(p, &p->lock);  // DOC: wait-sleep
+    }
   }
 }
 
@@ -470,9 +511,12 @@ void sched(void) {
 
 // Give up the CPU for one scheduling round.
 void yield(void) {
+  // uint64 pc;
   struct proc *p = myproc();
   acquire(&p->lock);
+  // pc = p->trapframe->epc;
   p->state = RUNNABLE;
+  // printf("start to yield, user pc %p\n", pc);
   sched();
   release(&p->lock);
 }
